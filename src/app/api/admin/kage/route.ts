@@ -5,6 +5,8 @@ import { appointKage, getCurrentKage, getKageHistory } from "@/src/services/admi
 import { requireAdmin, getSession } from "@/src/lib/session";
 import { apiSuccess, handleApiError } from "@/src/utils/errors";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     const [current, history] = await Promise.all([
