@@ -5,6 +5,8 @@ import { requireStaff } from "@/src/lib/session";
 import { CreateNewsSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   try {
     const session = await requireStaff();

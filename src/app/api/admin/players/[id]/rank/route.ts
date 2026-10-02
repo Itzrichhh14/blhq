@@ -5,6 +5,8 @@ import { requireAdmin } from "@/src/lib/session";
 import { AdminRankChangeSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }

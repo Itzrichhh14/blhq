@@ -4,6 +4,8 @@ import { completeSeason } from "@/src/services/seasonService";
 import { requireAdmin } from "@/src/lib/session";
 import { apiSuccess, handleApiError } from "@/src/utils/errors";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: { id: string } }

@@ -5,6 +5,8 @@ import { requireOwner } from "@/src/lib/session";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 import { UserRole } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }

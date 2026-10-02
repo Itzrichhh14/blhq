@@ -6,6 +6,8 @@ import { requireAdmin } from "@/src/lib/session";
 import { prisma } from "@/src/lib/prisma";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
+export const dynamic = "force-dynamic";
+
 async function getUserIdFromPlayerId(playerId: string): Promise<string> {
   const player = await prisma.player.findUnique({
     where: { id: playerId },
