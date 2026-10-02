@@ -1,0 +1,19 @@
+"use client";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import { Badge } from "@/src/components/ui/Badge";
+import { PageSpinner } from "@/src/components/ui/Spinner";
+import { apiFetch } from "@/src/lib/utils";
+
+interface AdminStats { users: { total: number; players: number; active: number; banned: number }; matches: { total: number; completed: number }; tournaments: { live: number }; applications: { pending: number }; activeSeason: { id: string; name: string } | null }
+export default function AdminPage() {
+  const { data: session, status } = useSession();
+  const [stats, setStats] = useState<AdminStats | null>(null);
+  const [error, setError] = useState(false);
+  useEffect(() => { if (status !== "authenticated") return; apiFetch<AdminStats>("/api/admin/stats").then((result) => { if ("error" in result) setError(true); else setStats(result.data); }).catch(() => setError(true)); }, [status]);
+  if (status === "loading") return <PageSpinner />;
+  const isStaff = session?.user.role && ["STAFF", "ADMIN", "OWNER"].includes(session.user.role);
+  if (!isStaff) return <div className="bl-card p-8 text-center"><h1 className="text-2xl font-black text-brand-text">Staff access required</h1><p className="mt-2 text-brand-dim">This area is limited to Bloodline staff.</p></div>;
+  return <div className="space-y-6"><div className="bl-page-header"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-dim">Operations</p><h1 className="bl-page-title text-3xl">Admin overview</h1></div><Badge className="bg-brand-accent/10 text-brand-accent">{session.user.role}</Badge></div>{error ? <div className="bl-alert-error">Administrative metrics could not be loaded.</div> : !stats ? <PageSpinner /> : <><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[{ label: "Users", value: stats.users.total }, { label: "Active players", value: stats.users.active }, { label: "Completed matches", value: stats.matches.completed }, { label: "Live tournaments", value: stats.tournaments.live }].map((item) => <div key={item.label} className="bl-stat"><span className="bl-stat-label">{item.label}</span><span className="bl-stat-value text-brand-text">{item.value.toLocaleString()}</span></div>)}</div><div className="grid gap-6 lg:grid-cols-2"><section className="bl-card p-5"><h2 className="text-xl font-bold text-brand-text">Current operations</h2><dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between gap-4"><dt className="text-brand-dim">Pending applications</dt><dd className="font-bold text-brand-text">{stats.applications.pending}</dd></div><div className="flex justify-between gap-4"><dt className="text-brand-dim">Banned users</dt><dd className="font-bold text-brand-text">{stats.users.banned}</dd></div><div className="flex justify-between gap-4"><dt className="text-brand-dim">Active season</dt><dd className="font-bold text-brand-text">{stats.activeSeason?.name ?? "None"}</dd></div></dl></section><section className="bl-card p-5"><h2 className="text-xl font-bold text-brand-text">Platform</h2><p className="mt-2 text-sm text-brand-dim">Public competitive data is available for review. Administrative mutations remain protected by staff-only API permissions.</p><div className="mt-4 flex flex-wrap gap-2"><Link href="/admin/applications" className="bl-btn bl-btn-secondary bl-btn-sm">Applications</Link><Link href="/admin/news" className="bl-btn bl-btn-secondary bl-btn-sm">Write news</Link><Link href="/players" className="bl-btn bl-btn-secondary bl-btn-sm">Players</Link><Link href="/matches" className="bl-btn bl-btn-secondary bl-btn-sm">Matches</Link><Link href="/tournaments" className="bl-btn bl-btn-secondary bl-btn-sm">Tournaments</Link><Link href="/news" className="bl-btn bl-btn-secondary bl-btn-sm">News</Link></div></section></div></>}</div>;
+}

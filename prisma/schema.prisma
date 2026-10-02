@@ -1,0 +1,779 @@
+// ============================================================
+// BLOODLINE — Prisma Schema
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  PLAYER
+  STAFF
+  ADMIN
+  OWNER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  INACTIVE
+}
+
+enum RankTier {
+  ACADEMY
+  GENIN
+  CHUNIN
+  JONIN
+  KAGE
+  BLOODLINE_LEGEND
+}
+
+enum Region {
+  NA
+  EU
+  ASIA
+  OCE
+  SA
+  OTHER
+}
+
+enum MapType {
+  ARENA
+  TRACKING
+  TIMED
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum MatchFormat {
+  STANDARD
+  BO3
+  BO5
+  CHALLENGE
+  TOURNAMENT
+  EXAM
+  TRIAL
+}
+
+enum TournamentStatus {
+  REGISTRATION
+  UPCOMING
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum TournamentFormat {
+  DOUBLE_ELIMINATION
+  SINGLE_ELIMINATION
+  ROUND_ROBIN
+  SWISS
+}
+
+enum ParticipantStatus {
+  REGISTERED
+  ACTIVE
+  ELIMINATED
+  DISQUALIFIED
+  WINNER
+}
+
+enum ChallengeStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  COMPLETED
+  CANCELLED
+}
+
+enum NotificationType {
+  CHALLENGE_RECEIVED
+  CHALLENGE_ACCEPTED
+  CHALLENGE_DECLINED
+  CHALLENGE_EXPIRED
+  RANK_CHANGE
+  ACHIEVEMENT_UNLOCKED
+  TOURNAMENT_UPDATE
+  EXAM_UPDATE
+  TEAM_UPDATE
+  MATCH_RESULT
+  SYSTEM
+  ADMIN_ACTION
+}
+
+enum ApplicationStatus {
+  PENDING
+  UNDER_REVIEW
+  TRIAL
+  ACCEPTED
+  DECLINED
+}
+
+enum SeasonStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum AchievementRarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+  MYTHIC
+}
+
+enum TrialStatus {
+  PENDING
+  IN_TRIAL
+  QUALIFIED
+  PASSED
+  FAILED
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum NewsCategory {
+  ANNOUNCEMENT
+  COMPETITIVE
+  TOURNAMENT
+  COMMUNITY
+  PLAYER_SPOTLIGHT
+}
+
+enum RankMovement {
+  UP
+  DOWN
+  NEW
+  SAME
+}
+
+enum AuditAction {
+  RANK_CHANGE
+  MATCH_CORRECTION
+  PLAYER_BAN
+  PLAYER_UNBAN
+  TOURNAMENT_CHANGE
+  KAGE_ASSIGNMENT
+  ACHIEVEMENT_GRANT
+  ACHIEVEMENT_REVOKE
+  USER_ROLE_CHANGE
+  APPLICATION_DECISION
+  SEASON_CHANGE
+  MANUAL_RATING_CHANGE
+  OTHER
+}
+
+// ============================================================
+// USER & AUTH
+// ============================================================
+
+model User {
+  id            String     @id @default(cuid())
+  username      String     @unique
+  email         String     @unique
+  passwordHash  String
+  role          UserRole   @default(PLAYER)
+  status        UserStatus @default(ACTIVE)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  lastLoginAt   DateTime?
+
+  // Relations
+  player        Player?
+  notifications Notification[]
+  application   Application?
+  auditLogs     AuditLog[]     @relation("AuditPerformedBy")
+  auditTargets  AuditLog[]     @relation("AuditTargetUser")
+  newsArticles  News[]
+  kageRecords   Kage[]
+
+  @@map("users")
+}
+
+// ============================================================
+// PLAYER PROFILE
+// ============================================================
+
+model Player {
+  id             String     @id @default(cuid())
+  userId         String     @unique
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  username       String     @unique
+  displayName    String
+  avatar         String?    // URL or identifier for frontend to resolve
+  bio            String?
+  region         Region     @default(NA)
+
+  // Rank & Rating
+  tier           RankTier   @default(ACADEMY)
+  rating         Int        @default(800)
+  peakRating     Int        @default(800)
+
+  // Stats
+  wins           Int        @default(0)
+  losses         Int        @default(0)
+  currentStreak  Int        @default(0)   // positive = win streak, negative = loss streak
+  longestStreak  Int        @default(0)
+  totalMatches   Int        @default(0)
+  tournamentWins Int        @default(0)
+  mvpCount       Int        @default(0)
+
+  // Misc
+  mainMap        MapType?
+  specialty      String?
+  status         UserStatus @default(ACTIVE)
+  joinDate       DateTime   @default(now())
+
+  // Team
+  teamId         String?
+  team           Team?      @relation(fields: [teamId], references: [id])
+
+  // Relations
+  ratingHistory       RatingHistory[]
+  matchParticipations MatchParticipant[]
+  playerMapStats      PlayerMapStats[]
+  achievements        PlayerAchievement[]
+  challengesSent      Challenge[]         @relation("ChallengeSent")
+  challengesReceived  Challenge[]         @relation("ChallengeReceived")
+  seasonStats         SeasonPlayerStats[]
+  tournamentEntries   TournamentParticipant[]
+  trialRecord         JoninTrial?
+  kageRecord          Kage?               @relation("KagePlayer")
+  rankHistory         RankHistory[]
+
+  @@map("players")
+}
+
+// ============================================================
+// RATING HISTORY
+// ============================================================
+
+model RatingHistory {
+  id         String   @id @default(cuid())
+  playerId   String
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  rating     Int
+  delta      Int      // +/- change
+  reason     String   // e.g. "MATCH_WIN", "MATCH_LOSS", "MANUAL_ADJUSTMENT"
+  matchId    String?
+  createdAt  DateTime @default(now())
+
+  @@index([playerId])
+  @@map("rating_history")
+}
+
+// ============================================================
+// RANK HISTORY
+// ============================================================
+
+model RankHistory {
+  id        String     @id @default(cuid())
+  playerId  String
+  player    Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  fromTier  RankTier?
+  toTier    RankTier
+  reason    String
+  createdAt DateTime   @default(now())
+
+  @@index([playerId])
+  @@map("rank_history")
+}
+
+// ============================================================
+// MAP
+// ============================================================
+
+model GameMap {
+  id          String   @id @default(cuid())
+  type        MapType  @unique
+  name        String
+  description String?
+  difficulty  Int      @default(1) // 1-5
+  active      Boolean  @default(true)
+
+  matches          Match[]
+  playerMapStats   PlayerMapStats[]
+  tournamentMatches TournamentMatch[]
+
+  @@map("game_maps")
+}
+
+model PlayerMapStats {
+  id         String   @id @default(cuid())
+  playerId   String
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  mapId      String
+  map        GameMap  @relation(fields: [mapId], references: [id])
+
+  matches    Int      @default(0)
+  wins       Int      @default(0)
+  losses     Int      @default(0)
+  rating     Int      @default(800)
+  bestStreak Int      @default(0)
+
+  @@unique([playerId, mapId])
+  @@map("player_map_stats")
+}
+
+// ============================================================
+// MATCH
+// ============================================================
+
+model Match {
+  id          String      @id @default(cuid())
+  mapId       String?
+  map         GameMap?    @relation(fields: [mapId], references: [id])
+  format      MatchFormat @default(STANDARD)
+  status      MatchStatus @default(SCHEDULED)
+
+  // Result
+  winnerPlayerId  String?
+  loserPlayerId   String?
+  mvpPlayerId     String?
+  scoreWinner     Int?
+  scoreLoser      Int?
+  notes           String?
+
+  // Context
+  seasonId         String?
+  season           Season?    @relation(fields: [seasonId], references: [id])
+  tournamentMatchId String?   @unique
+  tournamentMatch  TournamentMatch? @relation(fields: [tournamentMatchId], references: [id])
+  challengeId      String?   @unique
+  challenge        Challenge? @relation(fields: [challengeId], references: [id])
+
+  createdAt   DateTime    @default(now())
+  scheduledAt DateTime?
+  completedAt DateTime?
+
+  participants MatchParticipant[]
+
+  @@index([status])
+  @@index([seasonId])
+  @@map("matches")
+}
+
+model MatchParticipant {
+  id        String  @id @default(cuid())
+  matchId   String
+  match     Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player  @relation(fields: [playerId], references: [id])
+  isWinner  Boolean @default(false)
+  score     Int?
+  ratingBefore Int?
+  ratingAfter  Int?
+  ratingDelta  Int?
+
+  @@unique([matchId, playerId])
+  @@map("match_participants")
+}
+
+// ============================================================
+// SEASON
+// ============================================================
+
+model Season {
+  id        String       @id @default(cuid())
+  name      String
+  number    Int          @unique
+  status    SeasonStatus @default(UPCOMING)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime     @default(now())
+
+  matches     Match[]
+  playerStats SeasonPlayerStats[]
+  tournaments Tournament[]
+
+  @@map("seasons")
+}
+
+model SeasonPlayerStats {
+  id        String  @id @default(cuid())
+  seasonId  String
+  season    Season  @relation(fields: [seasonId], references: [id])
+  playerId  String
+  player    Player  @relation(fields: [playerId], references: [id])
+
+  rating        Int @default(800)
+  peakRating    Int @default(800)
+  wins          Int @default(0)
+  losses        Int @default(0)
+  tournamentWins Int @default(0)
+  mvpCount      Int @default(0)
+  finalRank     Int? // their rank position at end of season
+
+  @@unique([seasonId, playerId])
+  @@map("season_player_stats")
+}
+
+// ============================================================
+// RANKING SNAPSHOT
+// ============================================================
+
+model RankingSnapshot {
+  id        String       @id @default(cuid())
+  playerId  String
+  seasonId  String?
+  position  Int
+  movement  RankMovement @default(NEW)
+  rating    Int
+  tier      RankTier
+  createdAt DateTime     @default(now())
+
+  @@index([playerId])
+  @@index([seasonId])
+  @@map("ranking_snapshots")
+}
+
+// ============================================================
+// TEAM / DIVISION
+// ============================================================
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  slug        String   @unique
+  description String?
+  logoUrl     String?
+  color       String?  // hex color for frontend theming
+  leaderId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  players     Player[]
+  achievements TeamAchievement[]
+
+  @@map("teams")
+}
+
+model TeamAchievement {
+  id          String   @id @default(cuid())
+  teamId      String
+  team        Team     @relation(fields: [teamId], references: [id])
+  title       String
+  description String?
+  awardedAt   DateTime @default(now())
+
+  @@map("team_achievements")
+}
+
+// ============================================================
+// ACHIEVEMENTS
+// ============================================================
+
+model Achievement {
+  id          String            @id @default(cuid())
+  key         String            @unique // e.g. "FIRST_BLOOD", "WIN_STREAK_10"
+  name        String
+  description String
+  rarity      AchievementRarity @default(COMMON)
+  iconKey     String?
+  active      Boolean           @default(true)
+  // Requirements stored as JSON for flexible engine evaluation
+  requirements Json
+
+  players PlayerAchievement[]
+
+  @@map("achievements")
+}
+
+model PlayerAchievement {
+  id            String      @id @default(cuid())
+  playerId      String
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id])
+  unlockedAt    DateTime    @default(now())
+
+  @@unique([playerId, achievementId])
+  @@map("player_achievements")
+}
+
+// ============================================================
+// TOURNAMENT
+// ============================================================
+
+model Tournament {
+  id          String           @id @default(cuid())
+  name        String
+  slug        String           @unique
+  description String?
+  format      TournamentFormat @default(DOUBLE_ELIMINATION)
+  status      TournamentStatus @default(REGISTRATION)
+  maxPlayers  Int              @default(16)
+  seasonId    String?
+  season      Season?          @relation(fields: [seasonId], references: [id])
+  mapType     MapType?
+  startDate   DateTime?
+  endDate     DateTime?
+  prizeInfo   String?
+  createdBy   String?          // userId of creator
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  participants TournamentParticipant[]
+  matches      TournamentMatch[]
+  bracket      Bracket?
+
+  @@map("tournaments")
+}
+
+model TournamentParticipant {
+  id           String            @id @default(cuid())
+  tournamentId String
+  tournament   Tournament        @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  playerId     String
+  player       Player            @relation(fields: [playerId], references: [id])
+  status       ParticipantStatus @default(REGISTERED)
+  seed         Int?
+  registeredAt DateTime          @default(now())
+
+  @@unique([tournamentId, playerId])
+  @@map("tournament_participants")
+}
+
+model TournamentMatch {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  mapId        String?
+  map          GameMap?   @relation(fields: [mapId], references: [id])
+  round        Int        // round number
+  position     Int        // position within round (for bracket rendering)
+  bracketSide  String?    // "winners" | "losers" | "grand_finals"
+  player1Id    String?
+  player2Id    String?
+  winnerId     String?
+  status       MatchStatus @default(SCHEDULED)
+  scheduledAt  DateTime?
+  completedAt  DateTime?
+
+  // Points to the actual recorded Match
+  match        Match?
+
+  @@map("tournament_matches")
+}
+
+model Bracket {
+  id           String     @id @default(cuid())
+  tournamentId String     @unique
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  data         Json       // full bracket structure for frontend rendering
+  generatedAt  DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@map("brackets")
+}
+
+// ============================================================
+// CHŪNIN EXAM
+// ============================================================
+
+model ChuninExam {
+  id          String           @id @default(cuid())
+  name        String
+  status      TournamentStatus @default(REGISTRATION)
+  startDate   DateTime?
+  endDate     DateTime?
+  minRating   Int              @default(900) // minimum rating to register
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  registrations ChuninExamRegistration[]
+
+  @@map("chunin_exams")
+}
+
+model ChuninExamRegistration {
+  id        String     @id @default(cuid())
+  examId    String
+  exam      ChuninExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  playerId  String
+  status    String     @default("REGISTERED") // REGISTERED | QUALIFIED | FAILED | PASSED
+  registeredAt DateTime @default(now())
+
+  @@unique([examId, playerId])
+  @@map("chunin_exam_registrations")
+}
+
+// ============================================================
+// JŌNIN TRIAL
+// ============================================================
+
+model JoninTrial {
+  id          String      @id @default(cuid())
+  playerId    String      @unique
+  player      Player      @relation(fields: [playerId], references: [id])
+  status      TrialStatus @default(PENDING)
+  ratingAtStart Int?
+  notes       String?
+  reviewerId  String?     // userId of reviewer
+  decision    String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("jonin_trials")
+}
+
+// ============================================================
+// KAGE SYSTEM
+// ============================================================
+
+model Kage {
+  id          String    @id @default(cuid())
+  playerId    String    @unique
+  player      Player    @relation("KagePlayer", fields: [playerId], references: [id])
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  isCurrent   Boolean   @default(true)
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  specialty   String?
+  quote       String?
+  appointedBy String?   // userId
+
+  @@map("kage")
+}
+
+// ============================================================
+// CHALLENGE
+// ============================================================
+
+model Challenge {
+  id             String          @id @default(cuid())
+  challengerId   String
+  challenger     Player          @relation("ChallengeSent", fields: [challengerId], references: [id])
+  challengedId   String
+  challenged     Player          @relation("ChallengeReceived", fields: [challengedId], references: [id])
+  mapType        MapType?
+  format         MatchFormat     @default(CHALLENGE)
+  status         ChallengeStatus @default(PENDING)
+  message        String?
+  proposedDate   DateTime?
+  createdAt      DateTime        @default(now())
+  respondedAt    DateTime?
+  completedAt    DateTime?
+  expiresAt      DateTime?
+
+  // Resulting match after completion
+  match          Match?
+
+  @@map("challenges")
+}
+
+// ============================================================
+// NOTIFICATION
+// ============================================================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  metadata  Json?            // flexible per-type data for frontend linking
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+// ============================================================
+// RECRUITMENT APPLICATION
+// ============================================================
+
+model Application {
+  id                 String            @id @default(cuid())
+  userId             String?           @unique
+  user               User?             @relation(fields: [userId], references: [id])
+  username           String
+  discordTag         String
+  region             Region
+  ageBracket         String            // e.g. "13-15", "16-18", "18+"
+  mainMap            MapType?
+  experience         String
+  currentRank        String
+  competitiveHistory String
+  whyBloodline       String
+  clips              String?           // comma-separated URLs or textarea
+  status             ApplicationStatus @default(PENDING)
+  reviewerId         String?           // userId
+  notes              String?           // internal staff notes
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@map("applications")
+}
+
+// ============================================================
+// NEWS / ARTICLES
+// ============================================================
+
+model News {
+  id          String       @id @default(cuid())
+  title       String
+  slug        String       @unique
+  excerpt     String?
+  content     String       // Markdown / rich text
+  category    NewsCategory @default(ANNOUNCEMENT)
+  authorId    String?
+  author      User?        @relation(fields: [authorId], references: [id])
+  coverImage  String?
+  status      NewsStatus   @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([status, publishedAt])
+  @@map("news")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id             String      @id @default(cuid())
+  action         AuditAction
+  performedById  String
+  performedBy    User        @relation("AuditPerformedBy", fields: [performedById], references: [id])
+  targetUserId   String?
+  targetUser     User?       @relation("AuditTargetUser", fields: [targetUserId], references: [id])
+  targetEntityId String?     // generic id for match, tournament, etc.
+  targetType     String?     // e.g. "Match", "Player"
+  before         Json?       // snapshot before change
+  after          Json?       // snapshot after change
+  note           String?
+  createdAt      DateTime    @default(now())
+
+  @@index([performedById])
+  @@index([targetUserId])
+  @@map("audit_logs")
+}
