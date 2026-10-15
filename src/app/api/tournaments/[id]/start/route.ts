@@ -4,10 +4,8 @@ import { startTournament } from "@/src/services/tournamentService";
 import { requireStaff } from "@/src/lib/session";
 import { apiSuccess, handleApiError } from "@/src/utils/errors";
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await requireStaff();
     const tournament = await startTournament(params.id);

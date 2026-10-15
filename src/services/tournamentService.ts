@@ -206,6 +206,14 @@ export async function startTournament(tournamentId: string) {
       400
     );
 
+  if (tournament.format === "DOUBLE_ELIMINATION" || tournament.format === "SWISS") {
+    throw new AppError(
+      ErrorCode.INVALID_TOURNAMENT_STATE,
+      `${tournament.format.replaceAll("_", " ")} brackets are not supported yet. Choose single elimination or round robin.`,
+      400
+    );
+  }
+
   // Seed by rating (highest = seed 1)
   const sorted = [...participants].sort(
     (a, b) => (b.player.rating ?? 0) - (a.player.rating ?? 0)
@@ -229,18 +237,16 @@ export async function startTournament(tournamentId: string) {
     "id"
   >[];
 
-  if (tournament.format === "DOUBLE_ELIMINATION") {
-    ({ bracketData, tournamentMatches } = generateDoubleElimination(
-      tournamentId,
-      playerIds
-    ));
-  } else if (tournament.format === "ROUND_ROBIN") {
+  const fmt = tournament.format as string;
+  if (fmt === "DOUBLE_ELIMINATION") {
+    throw new AppError(ErrorCode.INVALID_TOURNAMENT_STATE, "Double elimination is not yet supported. Please use SINGLE_ELIMINATION or ROUND_ROBIN.", 400);
+  } else if (fmt === "ROUND_ROBIN") {
     ({ bracketData, tournamentMatches } = generateRoundRobin(
       tournamentId,
       playerIds
     ));
   } else {
-    // SINGLE_ELIMINATION (default fallback)
+    // SINGLE_ELIMINATION (and SWISS as alias)
     ({ bracketData, tournamentMatches } = generateSingleElimination(
       tournamentId,
       playerIds
@@ -310,19 +316,28 @@ export async function recordTournamentMatchResult(
   });
   if (!tmatch)
     throw new AppError(ErrorCode.NOT_FOUND, "Tournament match not found", 404);
+  if (tmatch.tournamentId !== tournamentId)
+    throw new AppError(ErrorCode.NOT_FOUND, "Tournament match not found", 404);
   if (tmatch.status === MatchStatus.COMPLETED)
     throw new AppError(ErrorCode.MATCH_ALREADY_COMPLETED, "Match already completed", 409);
-  if (tmatch.player1Id !== winnerId && tmatch.player2Id !== winnerId)
-    throw new AppError(ErrorCode.INVALID_MATCH_RESULT, "Winner is not in this match", 400);
+  if (!tmatch.player1Id || !tmatch.player2Id || tmatch.status !== MatchStatus.SCHEDULED)
+    throw new AppError(ErrorCode.MATCH_NOT_COMPLETABLE, "Both players must be assigned before recording a result", 400);
+  if (![tmatch.player1Id, tmatch.player2Id].includes(winnerId) ||
+      ![tmatch.player1Id, tmatch.player2Id].includes(loserId) || winnerId === loserId)
+    throw new AppError(ErrorCode.INVALID_MATCH_RESULT, "Winner and loser must be the two players in this match", 400);
 
   // Create real Match record
   const { createMatch, completeMatch } = await import("@/src/services/matchService");
   const match = await createMatch({
-    player1Id: winnerId,
-    player2Id: loserId,
+    player1Id: tmatch.player1Id,
+    player2Id: tmatch.player2Id,
     format: "TOURNAMENT",
   });
   await completeMatch(match.id, { winnerId, loserId, scoreWinner, scoreLoser });
+  await prisma.match.update({
+    where: { id: match.id },
+    data: { tournamentMatchId },
+  });
 
   // Update tournament match
   await prisma.tournamentMatch.update({
@@ -334,30 +349,33 @@ export async function recordTournamentMatchResult(
     },
   });
 
+  if (tournament.format === "SINGLE_ELIMINATION") {
+    const nextMatch = await prisma.tournamentMatch.findFirst({
+      where: {
+        tournamentId,
+        round: tmatch.round + 1,
+        position: Math.floor(tmatch.position / 2),
+        bracketSide: tmatch.bracketSide ?? "winners",
+      },
+    });
+    if (nextMatch) {
+      await prisma.tournamentMatch.update({
+        where: { id: nextMatch.id },
+        data: tmatch.position % 2 === 0 ? { player1Id: winnerId } : { player2Id: winnerId },
+      });
+    }
+  }
+
   // Update loser participant status based on format
   if (tournament.format === "SINGLE_ELIMINATION") {
     await prisma.tournamentParticipant.updateMany({
       where: { tournamentId, playerId: loserId },
       data: { status: ParticipantStatus.ELIMINATED },
     });
-  } else if (tournament.format === "DOUBLE_ELIMINATION") {
-    const loserParticipant = await prisma.tournamentParticipant.findUnique({
-      where: { tournamentId_playerId: { tournamentId, playerId: loserId } },
-    });
-    if (loserParticipant?.status === ParticipantStatus.ACTIVE) {
-      // First loss — move to losers bracket (stay ACTIVE)
-      // Already handled by bracket generation; no status change needed
-    } else {
-      // Already in losers bracket and lost again — eliminated
-      await prisma.tournamentParticipant.updateMany({
-        where: { tournamentId, playerId: loserId },
-        data: { status: ParticipantStatus.ELIMINATED },
-      });
-    }
   }
 
   // Advance bracket and check for tournament completion
-  const isComplete = await advanceBracket(tournamentId, tournamentMatchId, winnerId, loserId);
+  const isComplete = await advanceBracket(tournamentId, tmatch, winnerId);
 
   if (isComplete) {
     // Mark winner
@@ -417,7 +435,7 @@ export async function getBracket(tournamentId: string): Promise<BracketData> {
     orderBy: [{ round: "asc" }, { position: "asc" }],
   });
 
-  const matchMap = new Map(tMatches.map((m) => [m.id, m]));
+  const matchMap = new Map(tMatches.map((m) => [`${m.bracketSide}:${m.round}:${m.position}`, m]));
   const data = bracket.data as unknown as BracketData;
 
   // Update node statuses from live DB data
@@ -426,10 +444,11 @@ export async function getBracket(tournamentId: string): Promise<BracketData> {
     rounds: data.rounds.map((r) => ({
       ...r,
       matches: r.matches.map((node) => {
-        const live = matchMap.get(node.id);
+        const live = matchMap.get(`${node.bracketSide}:${node.round}:${node.position}`);
         if (!live) return node;
         return {
           ...node,
+          id: live.id,
           player1Id: live.player1Id,
           player2Id: live.player2Id,
           winnerId: live.winnerId,
@@ -478,6 +497,7 @@ interface BracketGenResult {
     bracketSide: string;
     player1Id: string | null;
     player2Id: string | null;
+    winnerId?: string | null;
     status: MatchStatus;
   }>;
 }
@@ -493,25 +513,23 @@ function generateSingleElimination(
   const rounds: BracketRound[] = [];
   const tournamentMatches: BracketGenResult["tournamentMatches"] = [];
 
-  let currentRound = seeded;
+  let currentRound = seeded.map((playerId) => ({ playerId, resolved: true }));
   let roundNum = 1;
 
   while (currentRound.length > 1) {
     const matches: BracketNode[] = [];
-    const nextRound: (string | null)[] = [];
+    const nextRound: typeof currentRound = [];
 
     for (let i = 0; i < currentRound.length; i += 2) {
-      const p1 = currentRound[i];
-      const p2 = currentRound[i + 1];
+      const slot1 = currentRound[i];
+      const slot2 = currentRound[i + 1];
+      const p1 = slot1.playerId;
+      const p2 = slot2.playerId;
       const pos = i / 2;
       const nodeId = `se-r${roundNum}-p${pos}`;
-
-      // Auto-advance byes
-      if (p1 === null || p2 === null) {
-        const advancing = p1 ?? p2;
-        nextRound.push(advancing);
-        continue;
-      }
+      const resolved = slot1.resolved && slot2.resolved;
+      const winnerId = resolved ? p1 ?? p2 : null;
+      const status = resolved ? MatchStatus.COMPLETED : MatchStatus.SCHEDULED;
 
       matches.push({
         id: nodeId,
@@ -522,8 +540,8 @@ function generateSingleElimination(
         player1Username: null,
         player2Id: p2,
         player2Username: null,
-        winnerId: null,
-        status: MatchStatus.SCHEDULED,
+        winnerId,
+        status,
       });
       tournamentMatches.push({
         tournamentId,
@@ -532,14 +550,13 @@ function generateSingleElimination(
         bracketSide: "winners",
         player1Id: p1,
         player2Id: p2,
-        status: MatchStatus.SCHEDULED,
+        winnerId,
+        status,
       });
-      nextRound.push(null); // winner TBD
+      nextRound.push({ playerId: winnerId, resolved });
     }
 
-    if (matches.length > 0) {
-      rounds.push({ round: roundNum, side: "winners", matches });
-    }
+    rounds.push({ round: roundNum, side: "winners", matches });
     currentRound = nextRound;
     roundNum++;
   }
@@ -748,9 +765,8 @@ function generateRoundRobin(
 // ============================================================
 async function advanceBracket(
   tournamentId: string,
-  completedMatchId: string,
-  winnerId: string,
-  loserId: string
+  completedMatch: { id: string; round: number; position: number; bracketSide: string | null },
+  winnerId: string
 ): Promise<boolean> {
   const bracket = await prisma.bracket.findUnique({ where: { tournamentId } });
   if (!bracket) return false;
@@ -766,11 +782,11 @@ async function advanceBracket(
   for (const round of data.rounds) {
     for (const node of round.matches) {
       if (
-        node.id === completedMatchId ||
-        (node.player1Id === winnerId || node.player1Id === loserId) &&
-        (node.player2Id === winnerId || node.player2Id === loserId) &&
-        node.status !== MatchStatus.COMPLETED
+        node.round === completedMatch.round &&
+        node.position === completedMatch.position &&
+        node.bracketSide === (completedMatch.bracketSide ?? "winners")
       ) {
+        node.id = completedMatch.id;
         node.winnerId = winnerId;
         node.status = MatchStatus.COMPLETED;
         updated = true;
@@ -787,22 +803,6 @@ async function advanceBracket(
     });
   }
 
-  // Check if all non-grand-finals matches are complete
-  const pendingMatches = await prisma.tournamentMatch.count({
-    where: {
-      tournamentId,
-      status: { not: MatchStatus.COMPLETED },
-      bracketSide: { not: "grand_finals" },
-      player1Id: { not: null },
-      player2Id: { not: null },
-    },
-  });
-
-  // Also check grand finals
-  const grandFinals = await prisma.tournamentMatch.findFirst({
-    where: { tournamentId, bracketSide: "grand_finals" },
-  });
-
   if (tournament?.format === "ROUND_ROBIN") {
     // Round robin is complete when all matches are done
     const remaining = await prisma.tournamentMatch.count({
@@ -811,8 +811,15 @@ async function advanceBracket(
     return remaining === 0;
   }
 
-  // For elimination formats: complete when grand finals has a winner
-  return grandFinals?.status === MatchStatus.COMPLETED;
+  if (tournament?.format === "SINGLE_ELIMINATION") {
+    const finalMatch = await prisma.tournamentMatch.findFirst({
+      where: { tournamentId, bracketSide: "winners" },
+      orderBy: { round: "desc" },
+    });
+    return finalMatch?.status === MatchStatus.COMPLETED && Boolean(finalMatch.winnerId);
+  }
+
+  return false;
 }
 
 // ============================================================

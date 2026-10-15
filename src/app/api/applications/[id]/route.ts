@@ -6,10 +6,8 @@ import { requireStaff } from "@/src/lib/session";
 import { ReviewApplicationSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await requireStaff();
     const application = await getApplicationById(params.id);
@@ -19,10 +17,8 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireStaff();
     const body = await req.json();

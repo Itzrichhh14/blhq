@@ -25,42 +25,47 @@ export default function RegisterPage() {
     setFieldErrors({});
     setLoading(true);
 
-    const res = await apiFetch("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({
-        username: form.username,
-        email: form.email,
-        password: form.password,
-        displayName: form.displayName || form.username,
-      }),
-    });
+    try {
+      const res = await apiFetch("/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({
+          username: form.username.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          displayName: form.displayName.trim() || undefined,
+        }),
+      });
 
-    if ("error" in res) {
-      setLoading(false);
-      if (res.error.code === "VALIDATION_ERROR" && (res.error as any).details?.fieldErrors) {
-        setFieldErrors((res.error as any).details.fieldErrors);
-      } else if (res.error.code === "EMAIL_TAKEN") {
-        setError("That email is already registered.");
-      } else if (res.error.code === "USERNAME_TAKEN") {
-        setError("That username is taken.");
-      } else {
-        setError(res.error.message);
+      if ("error" in res) {
+        if (res.error.code === "VALIDATION_ERROR") {
+          const details = res.error.details as { fieldErrors?: Record<string, string[]> } | undefined;
+          setFieldErrors(details?.fieldErrors ?? {});
+        }
+        setError(
+          res.error.code === "EMAIL_TAKEN"
+            ? "That email is already registered."
+            : res.error.code === "USERNAME_TAKEN"
+              ? "That username is taken."
+              : res.error.message
+        );
+        return;
       }
-      return;
-    }
 
-    // Auto-sign-in after successful registration
-    const signInRes = await signIn("credentials", {
-      email: form.email,
-      password: form.password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (signInRes?.ok) {
-      router.push("/dashboard");
-      router.refresh();
-    } else {
-      router.push("/login");
+      const signInRes = await signIn("credentials", {
+        email: form.email.trim(),
+        password: form.password,
+        redirect: false,
+      });
+      if (signInRes?.ok) {
+        router.replace("/dashboard");
+        router.refresh();
+      } else {
+        router.replace("/login?registered=1");
+      }
+    } catch {
+      setError("Registration is temporarily unavailable. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -76,14 +81,17 @@ export default function RegisterPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="bl-form-group">
-            <label className="bl-label">Username <span className="text-red-500">*</span></label>
+            <label htmlFor="register-username" className="bl-label">Username <span className="text-red-500">*</span></label>
             <input
+              id="register-username"
               value={form.username}
               onChange={e => set("username", e.target.value)}
               required
               autoFocus
               placeholder="kazeshiro"
               className="bl-input"
+              autoComplete="username"
+              aria-invalid={Boolean(fieldErrors.username?.length)}
             />
             {fieldErrors.username?.map(e => (
               <p key={e} className="bl-error">{e}</p>
@@ -92,8 +100,9 @@ export default function RegisterPage() {
           </div>
 
           <div className="bl-form-group">
-            <label className="bl-label">Display Name</label>
+            <label htmlFor="register-display-name" className="bl-label">Display Name</label>
             <input
+              id="register-display-name"
               value={form.displayName}
               onChange={e => set("displayName", e.target.value)}
               placeholder="Kazeshiro (optional)"
@@ -102,14 +111,17 @@ export default function RegisterPage() {
           </div>
 
           <div className="bl-form-group">
-            <label className="bl-label">Email <span className="text-red-500">*</span></label>
+            <label htmlFor="register-email" className="bl-label">Email <span className="text-red-500">*</span></label>
             <input
+              id="register-email"
               type="email"
               value={form.email}
               onChange={e => set("email", e.target.value)}
               required
               placeholder="you@example.com"
               className="bl-input"
+              autoComplete="email"
+              aria-invalid={Boolean(fieldErrors.email?.length)}
             />
             {fieldErrors.email?.map(e => (
               <p key={e} className="bl-error">{e}</p>
@@ -117,14 +129,17 @@ export default function RegisterPage() {
           </div>
 
           <div className="bl-form-group">
-            <label className="bl-label">Password <span className="text-red-500">*</span></label>
+            <label htmlFor="register-password" className="bl-label">Password <span className="text-red-500">*</span></label>
             <input
+              id="register-password"
               type="password"
               value={form.password}
               onChange={e => set("password", e.target.value)}
               required
               placeholder="Min 8 characters"
               className="bl-input"
+              autoComplete="new-password"
+              aria-invalid={Boolean(fieldErrors.password?.length)}
             />
             {fieldErrors.password?.map(e => (
               <p key={e} className="bl-error">{e}</p>

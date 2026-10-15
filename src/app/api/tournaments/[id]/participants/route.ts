@@ -5,10 +5,8 @@ import { registerPlayer, removePlayer } from "@/src/services/tournamentService";
 import { requireAuth, requireStaff } from "@/src/lib/session";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireAuth();
     const body = await req.json().catch(() => ({}));
@@ -28,10 +26,8 @@ export async function POST(
   }
 }
 
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await requireStaff();
     const { searchParams } = req.nextUrl;

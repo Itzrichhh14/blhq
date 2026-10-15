@@ -7,10 +7,8 @@ import { requireAuth } from "@/src/lib/session";
 import { UpdatePlayerSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const { searchParams } = req.nextUrl;
     const include = searchParams.get("include")?.split(",") ?? [];
@@ -40,10 +38,8 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireAuth();
 

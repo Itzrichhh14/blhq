@@ -3,10 +3,8 @@ import { NextRequest } from "next/server";
 import { getTournamentById } from "@/src/services/tournamentService";
 import { apiSuccess, handleApiError } from "@/src/utils/errors";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const tournament = await getTournamentById(params.id);
     return apiSuccess(tournament);

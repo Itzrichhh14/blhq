@@ -12,29 +12,42 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [callbackError, setCallbackError] = useState("");
+  const [callbackUrl, setCallbackUrl] = useState("/dashboard");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setCallbackError(params.get("error") ?? "");
+    const requestedUrl = params.get("callbackUrl");
+    if (requestedUrl?.startsWith("/") && !requestedUrl.startsWith("//") && !requestedUrl.includes("\\")) {
+      setCallbackUrl(requestedUrl);
+    }
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const res = await signIn("credentials", {
-      email, password, redirect: false,
-    });
-    setLoading(false);
-    if (res?.error) {
-      setError(
-        res.error === "PLAYER_SUSPENDED"
-          ? "This account has been suspended."
-          : "Invalid email or password."
-      );
-    } else {
-      router.push("/dashboard");
-      router.refresh();
+    try {
+      const res = await signIn("credentials", {
+        email: email.trim(),
+        password,
+        callbackUrl,
+        redirect: false,
+      });
+      if (res?.error) {
+        setError(
+          res.error === "PLAYER_SUSPENDED"
+            ? "This account is suspended. Contact staff for help."
+            : "Email or password is incorrect."
+        );
+      } else {
+        router.replace(callbackUrl);
+        router.refresh();
+      }
+    } catch {
+      setError("Sign in is temporarily unavailable. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -54,8 +67,9 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="bl-form-group">
-            <label className="bl-label">Email</label>
+            <label htmlFor="login-email" className="bl-label">Email</label>
             <input
+              id="login-email"
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
@@ -63,18 +77,23 @@ export default function LoginPage() {
               autoFocus
               placeholder="you@example.com"
               className="bl-input"
+              autoComplete="email"
+              aria-invalid={Boolean(error)}
             />
           </div>
 
           <div className="bl-form-group">
-            <label className="bl-label">Password</label>
+            <label htmlFor="login-password" className="bl-label">Password</label>
             <input
+              id="login-password"
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
               required
               placeholder="••••••••"
               className="bl-input"
+              autoComplete="current-password"
+              aria-invalid={Boolean(error)}
             />
           </div>
 
@@ -95,9 +114,6 @@ export default function LoginPage() {
         </p>
       </div>
 
-      <p className="text-center text-brand-dim/50 text-xs mt-4">
-        Demo: player@bloodline.dev / BloodlinePlayer1!
-      </p>
     </div>
   );
 }

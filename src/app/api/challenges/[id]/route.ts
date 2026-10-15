@@ -11,29 +11,28 @@ import { requireAuth } from "@/src/lib/session";
 import { RespondChallengeSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
   try {
-    await requireAuth();
-    const challenge = await getChallengeById(params.id);
+    const session = await requireAuth();
+    if (!session.user.playerId) {
+      return apiError(ErrorCode.PLAYER_NOT_FOUND, "No player profile found", 400);
+    }
+    const { id } = await props.params;
+    const challenge = await getChallengeById(id, session.user.playerId);
     return apiSuccess(challenge);
   } catch (err) {
     return handleApiError(err);
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireAuth();
     if (!session.user.playerId) {
       return apiError(ErrorCode.PLAYER_NOT_FOUND, "No player profile found", 400);
     }
-    const result = await cancelChallenge(params.id, session.user.playerId);
+    const { id } = await props.params;
+    const result = await cancelChallenge(id, session.user.playerId);
     return apiSuccess(result);
   } catch (err) {
     return handleApiError(err);

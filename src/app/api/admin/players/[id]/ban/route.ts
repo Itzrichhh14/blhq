@@ -17,10 +17,8 @@ async function getUserIdFromPlayerId(playerId: string): Promise<string> {
   return player.userId;
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireAdmin();
     const body = await req.json().catch(() => ({}));
@@ -35,10 +33,8 @@ export async function POST(
   }
 }
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireAdmin();
     const userId = await getUserIdFromPlayerId(params.id);

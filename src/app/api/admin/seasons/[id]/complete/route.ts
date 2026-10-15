@@ -6,10 +6,8 @@ import { apiSuccess, handleApiError } from "@/src/utils/errors";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await requireAdmin();
     const season = await completeSeason(params.id);

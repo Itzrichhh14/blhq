@@ -4,10 +4,8 @@ import { getMapById, getMapLeaderboard } from "@/src/services/mapService";
 import { apiSuccess, handleApiError } from "@/src/utils/errors";
 import { MapType } from "@prisma/client";
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const { searchParams } = req.nextUrl;
     const include = searchParams.get("include")?.split(",") ?? [];

@@ -213,9 +213,12 @@ export async function cancelChallenge(
 // ============================================================
 // getChallengeById
 // ============================================================
-export async function getChallengeById(id: string) {
-  const challenge = await prisma.challenge.findUnique({
-    where: { id },
+export async function getChallengeById(id: string, playerId: string) {
+  const challenge = await prisma.challenge.findFirst({
+    where: {
+      id,
+      OR: [{ challengerId: playerId }, { challengedId: playerId }],
+    },
     include: {
       challenger: {
         select: { id: true, username: true, displayName: true, avatar: true, tier: true, rating: true },

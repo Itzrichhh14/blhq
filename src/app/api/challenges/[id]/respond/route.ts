@@ -5,10 +5,8 @@ import { requireAuth } from "@/src/lib/session";
 import { RespondChallengeSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const session = await requireAuth();
     if (!session.user.playerId) {

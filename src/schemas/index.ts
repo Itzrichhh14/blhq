@@ -74,6 +74,14 @@ export const CompleteMatchSchema = z.object({
   notes: z.string().max(500).optional(),
 });
 
+export const TournamentMatchResultSchema = z.object({
+  tournamentMatchId: z.string().cuid(),
+  winnerId: z.string().cuid(),
+  loserId: z.string().cuid(),
+  scoreWinner: z.number().int().min(0).max(99).optional(),
+  scoreLoser: z.number().int().min(0).max(99).optional(),
+});
+
 // ============================================================
 // TOURNAMENT
 // ============================================================
@@ -188,7 +196,7 @@ export const CreateAchievementSchema = z.object({
   description: z.string().max(500),
   rarity: z.nativeEnum(AchievementRarity),
   iconKey: z.string().max(100).optional(),
-  requirements: z.record(z.unknown()),
+  requirements: z.record(z.string(), z.unknown()),
 });
 
 // ============================================================

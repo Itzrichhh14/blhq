@@ -7,10 +7,8 @@ import { requireStaff } from "@/src/lib/session";
 import { CompleteMatchSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function GET(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     const match = await getMatch(params.id);
     return apiSuccess(match);

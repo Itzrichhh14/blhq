@@ -2,28 +2,26 @@
 import { NextRequest } from "next/server";
 import { recordTournamentMatchResult } from "@/src/services/tournamentService";
 import { requireStaff } from "@/src/lib/session";
+import { TournamentMatchResultSchema } from "@/src/schemas";
 import { apiSuccess, apiError, handleApiError, ErrorCode } from "@/src/utils/errors";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await requireStaff();
     const body = await req.json();
-    const { tournamentMatchId, winnerId, loserId, scoreWinner, scoreLoser } = body;
-
-    if (!tournamentMatchId || !winnerId || !loserId) {
-      return apiError(ErrorCode.VALIDATION_ERROR, "tournamentMatchId, winnerId, and loserId are required", 422);
+    const parsed = TournamentMatchResultSchema.safeParse(body);
+    if (!parsed.success) {
+      return apiError(ErrorCode.VALIDATION_ERROR, "Invalid tournament result", 422, parsed.error.flatten());
     }
 
     const result = await recordTournamentMatchResult(
       params.id,
-      tournamentMatchId,
-      winnerId,
-      loserId,
-      scoreWinner,
-      scoreLoser
+      parsed.data.tournamentMatchId,
+      parsed.data.winnerId,
+      parsed.data.loserId,
+      parsed.data.scoreWinner,
+      parsed.data.scoreLoser
     );
     return apiSuccess(result);
   } catch (err) {

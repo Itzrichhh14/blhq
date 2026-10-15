@@ -181,12 +181,38 @@ export function truncate(s: string, n = 60): string {
 export async function apiFetch<T>(
   path: string,
   opts?: RequestInit
-): Promise<{ data: T } | { error: { code: string; message: string } }> {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...opts?.headers },
-    ...opts,
-  });
-  const json = await res.json();
-  if (!json.success) return { error: json.error };
-  return { data: json.data as T };
+): Promise<
+  | { data: T }
+  | { error: { code: string; message: string; details?: unknown } }
+> {
+  try {
+    const res = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...opts?.headers },
+      ...opts,
+    });
+    const json = await res.json().catch(() => null) as {
+      success?: boolean;
+      data?: T;
+      error?: { code?: string; message?: string; details?: unknown };
+    } | null;
+
+    if (!res.ok || !json?.success) {
+      return {
+        error: {
+          code: json?.error?.code ?? `HTTP_${res.status}`,
+          message: json?.error?.message ?? "The request could not be completed.",
+          details: json?.error?.details,
+        },
+      };
+    }
+
+    return { data: json.data as T };
+  } catch {
+    return {
+      error: {
+        code: "NETWORK_ERROR",
+        message: "Could not reach the server. Check your connection and try again.",
+      },
+    };
+  }
 }

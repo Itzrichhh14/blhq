@@ -4,10 +4,8 @@ import { cancelMatch } from "@/src/services/matchService";
 import { requireStaff } from "@/src/lib/session";
 import { apiSuccess, handleApiError } from "@/src/utils/errors";
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   try {
     await requireStaff();
     const body = await req.json().catch(() => ({}));

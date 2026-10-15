@@ -11,6 +11,7 @@ export function Navbar() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -23,6 +24,11 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handle);
   }, []);
 
+  useEffect(() => {
+    setMobileOpen(false);
+    setMenuOpen(false);
+  }, [pathname]);
+
   function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = q.trim();
@@ -34,35 +40,41 @@ export function Navbar() {
 
   const isStaff = session?.user.role && ["STAFF", "ADMIN", "OWNER"].includes(session.user.role);
 
+  const links = [
+    { href: "/rankings", label: "Ranking" },
+    { href: "/players", label: "Jugadores" },
+    { href: "/matches", label: "Partidos" },
+    { href: "/tournaments", label: "Torneos" },
+    { href: "/seasons", label: "Temporadas" },
+    { href: "/teams", label: "Equipos" },
+    { href: "/news", label: "Noticias" },
+  ];
+
+  function navClass(href: string) {
+    const active = pathname === href || pathname.startsWith(`${href}/`);
+    return cn(
+      "rounded px-3 py-2 text-sm transition-colors",
+      active ? "bg-brand-muted text-brand-text" : "text-brand-dim hover:bg-brand-muted/60 hover:text-brand-text"
+    );
+  }
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-14 bg-brand-surface/95 backdrop-blur-sm border-b border-brand-border flex items-center px-4 gap-4">
+    <nav className="fixed left-0 right-0 top-0 z-50 border-b border-brand-border bg-[#080a0f]/95 backdrop-blur-xl">
+      <div className="flex h-14 items-center gap-3 px-3 sm:px-4">
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 shrink-0 mr-2">
-        <span className="text-brand-accent font-black text-lg tracking-widest uppercase">
-          BLOODLINE
+        <span className="text-brand-text font-black text-lg uppercase">
+          BLOODLINE<span className="text-emerald-300">.</span>
         </span>
       </Link>
 
       {/* Nav links */}
-      <div className="hidden md:flex items-center gap-1 text-sm">
-        {[
-          { href: "/rankings", label: "Rankings" },
-          { href: "/players",  label: "Players"  },
-          { href: "/matches",  label: "Matches"  },
-          { href: "/tournaments", label: "Tournaments" },
-          { href: "/seasons",  label: "Seasons"  },
-          { href: "/teams",    label: "Teams"    },
-          { href: "/news",     label: "News"     },
-        ].map(({ href, label }) => (
+      <div className="hidden items-center gap-0.5 lg:flex">
+        {links.map(({ href, label }) => (
           <Link
             key={href}
             href={href}
-            className={cn(
-              "px-3 py-1.5 rounded text-sm transition-colors",
-              pathname.startsWith(href)
-                ? "text-brand-text bg-brand-muted"
-                : "text-brand-dim hover:text-brand-text hover:bg-brand-muted/50"
-            )}
+            className={navClass(href)}
           >
             {label}
           </Link>
@@ -70,10 +82,7 @@ export function Navbar() {
         {isStaff && (
           <Link
             href="/admin"
-            className={cn(
-              "px-3 py-1.5 rounded text-sm transition-colors text-brand-accent/80 hover:text-brand-accent hover:bg-brand-muted/50",
-              pathname.startsWith("/admin") && "bg-brand-muted"
-            )}
+            className={navClass("/admin")}
           >
             Admin
           </Link>
@@ -81,7 +90,7 @@ export function Navbar() {
       </div>
 
       {/* Search */}
-      <form onSubmit={handleSearch} className="flex-1 max-w-xs ml-auto">
+      <form onSubmit={handleSearch} className="ml-auto hidden w-full max-w-56 lg:block">
         <input
           value={q}
           onChange={e => setQ(e.target.value)}
@@ -90,6 +99,22 @@ export function Navbar() {
                      text-brand-text placeholder-brand-dim/60 focus:outline-none focus:border-brand-accent/50"
         />
       </form>
+
+      <Link href="/search" aria-label="Buscar" title="Buscar" className="hidden rounded px-2 py-1.5 text-lg text-brand-dim hover:bg-brand-muted hover:text-brand-text sm:inline-flex lg:hidden">⌕</Link>
+
+      <Link href="/apply" className="hidden rounded border border-emerald-300/35 px-3 py-1.5 text-xs font-bold uppercase text-emerald-200 transition-colors hover:bg-emerald-300/10 sm:inline-flex">Apply</Link>
+
+      <button
+        type="button"
+        className="ml-auto inline-flex h-9 w-9 flex-col items-center justify-center gap-1 rounded border border-brand-border text-brand-text lg:hidden"
+        aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+        aria-expanded={mobileOpen}
+        onClick={() => setMobileOpen((open) => !open)}
+      >
+        <span className={cn("h-0.5 w-4 bg-current transition-transform", mobileOpen && "translate-y-1.5 rotate-45")} />
+        <span className={cn("h-0.5 w-4 bg-current transition-opacity", mobileOpen && "opacity-0")} />
+        <span className={cn("h-0.5 w-4 bg-current transition-transform", mobileOpen && "-translate-y-1.5 -rotate-45")} />
+      </button>
 
       {/* Auth area */}
       {session ? (
@@ -138,6 +163,23 @@ export function Navbar() {
         <div className="flex items-center gap-2 shrink-0">
           <Link href="/login" className="bl-btn bl-btn-ghost bl-btn-sm text-sm">Sign In</Link>
           <Link href="/register" className="bl-btn bl-btn-primary bl-btn-sm text-sm">Join</Link>
+        </div>
+      )}
+      </div>
+
+      {mobileOpen && (
+        <div className="border-t border-brand-border bg-[#080a0f] px-3 pb-4 pt-3 shadow-2xl lg:hidden">
+          <form onSubmit={handleSearch} className="mb-3 flex gap-2">
+            <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar jugadores y equipos" placeholder="Buscar jugadores, equipos…" className="bl-input h-10 flex-1" />
+            <button type="submit" className="bl-btn bl-btn-secondary">Buscar</button>
+          </form>
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-3">
+            {links.map(({ href, label }) => <Link key={href} href={href} className={navClass(href)}>{label}</Link>)}
+            {isStaff && <Link href="/admin" className={navClass("/admin")}>Admin</Link>}
+            <Link href="/apply" className={navClass("/apply")}>Apply to Bloodline</Link>
+            {session && <Link href="/achievements" className={navClass("/achievements")}>Logros</Link>}
+          </div>
+          {!session && <div className="mt-3 flex gap-2"><Link href="/login" className="bl-btn bl-btn-secondary flex-1">Iniciar sesión</Link><Link href="/register" className="bl-btn bl-btn-primary flex-1">Crear cuenta</Link></div>}
         </div>
       )}
     </nav>
